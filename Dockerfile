@@ -38,5 +38,5 @@ RUN pip install numpy matplotlib scipy scikit-learn plyfile pandas tensorboard t
     && FORCE_CUDA=1 pip install "git+https://github.com/facebookresearch/pytorch3d.git"
 
 # PointFilter
-RUN git clone https://github.com/alancneves/score-denoise score-denoise
+RUN git clone -b new_feat https://github.com/alancneves/score-denoise score-denoise
 RUN ln -s $(which python3) /usr/bin/python
