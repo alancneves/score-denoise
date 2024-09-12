@@ -47,7 +47,7 @@ def denoise_large_pointcloud(model, pcl, cluster_size, seed=0):
     kmeans = KMeans(n_clusters=n_clusters, random_state=seed).fit(pcl)
 
     pcl_parts = []
-    for i in tqdm(range(n_clusters), desc='Denoise Clusters'):
+    for i in tqdm(range(n_clusters), desc='Denoising Clusters'):
         pts_idx = kmeans.labels_ == i
 
         pcl_part_noisy = torch.FloatTensor(pcl[pts_idx]).to(device)

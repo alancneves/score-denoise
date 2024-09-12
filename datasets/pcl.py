@@ -3,7 +3,8 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
-
+from pathlib import Path
+from plyfile import PlyData
 
 class PointCloudDataset(Dataset):
 
@@ -35,3 +36,21 @@ class PointCloudDataset(Dataset):
             data = self.transform(data)
         return data
 
+
+def load_pcd(filepath: str) -> np.array:
+    data = None
+    ext = Path(filepath).suffix
+    if not Path(filepath).is_file():
+        raise FileNotFoundError(f"File {filepath} not found!")
+
+    if ext == '.txt' or ext == '.xyz':
+        data = np.genfromtxt(filepath, dtype=np.float32)
+    elif ext == '.npy' or ext == '.npz':
+        data = np.load(filepath).as_type(np.float32)
+    elif ext == '.ply':
+        plydata = PlyData.read("antenna_nerfhuge_1m_nerf.ply")
+        data = np.array(plydata['vertex'].data[['x','y','z']].tolist(), dtype=np.float32)
+    else:
+        raise NotImplementedError(f"Files with ext {ext} are not allowed!")
+
+    return data
