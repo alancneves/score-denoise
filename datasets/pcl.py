@@ -14,13 +14,9 @@ class PointCloudDataset(Dataset):
         self.transform = transform
         self.pointclouds = []
         self.pointcloud_names = []
-        for fn in tqdm(os.listdir(self.pcl_dir), desc='Loading'):
-            if fn[-3:] != 'xyz':
-                continue
+        for fn in tqdm(os.listdir(self.pcl_dir)):
             pcl_path = os.path.join(self.pcl_dir, fn)
-            if not os.path.exists(pcl_path):
-                raise FileNotFoundError('File not found: %s' % pcl_path)
-            pcl = torch.FloatTensor(np.loadtxt(pcl_path, dtype=np.float32))
+            pcl = torch.FloatTensor(load_pcd(pcl_path))
             self.pointclouds.append(pcl)
             self.pointcloud_names.append(fn[:-4])
 
