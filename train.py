@@ -68,10 +68,7 @@ def main(rank: int, world_size: int, args):
     train_dset = PairedPatchDataset(
         datasets=[
             PointCloudDataset(
-                root=args.dataset_root,
-                dataset=args.dataset,
-                split='train',
-                resolution=resl,
+                pcl_dir=os.path.join(args.dataset_root, args.dataset, 'pointclouds', 'train', resl),
                 transform=standard_train_transforms(noise_std_max=args.noise_max, noise_std_min=args.noise_min, rotate=args.aug_rotate)
             ) for resl in args.resolutions
         ],
@@ -80,10 +77,7 @@ def main(rank: int, world_size: int, args):
         on_the_fly=True  
     )
     val_dset = PointCloudDataset(
-            root=args.dataset_root,
-            dataset=args.dataset,
-            split='test',
-            resolution=args.resolutions[0],
+            pcl_dir=os.path.join(args.dataset_root, args.dataset, 'pointclouds', 'test', args.resolutions[0]),
             transform=standard_train_transforms(noise_std_max=args.val_noise, noise_std_min=args.val_noise, rotate=False, scale_d=0),
         )
     train_iter = get_data_iterator(
