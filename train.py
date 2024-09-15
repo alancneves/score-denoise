@@ -55,6 +55,7 @@ def main(rank: int, world_size: int, args):
         log_dir = get_new_log_dir(args.log_root, prefix='D%s_' % (args.dataset), postfix='_' + args.tag if args.tag is not None else '')
         task = None
         if args.clearml:
+            logger.warning("Logging data on ClearML!")
             from clearml import Task
             task = Task.init(project_name=args.project_name, task_name=args.task_name, output_uri=args.output_uri)
         writer = torch.utils.tensorboard.SummaryWriter(log_dir)
@@ -181,6 +182,8 @@ def main(rank: int, world_size: int, args):
                 pcl_denoised = patch_based_denoise(model, pcl_noisy, ld_step_size=args.ld_step_size)
                 all_clean.append(pcl_clean.unsqueeze(0))
                 all_denoised.append(pcl_denoised.unsqueeze(0))
+                break
+            break
         all_clean = torch.cat(all_clean, dim=0)
         all_denoised = torch.cat(all_denoised, dim=0)
         dist.barrier()
@@ -219,11 +222,10 @@ def main(rank: int, world_size: int, args):
                     'optimizer': optimizer.state_dict(),
                     # 'scheduler': scheduler.state_dict(),
                 }
-                dist.barrier()
                 if rank==0:
                     ckpt_mgr.save(model, args, cd_loss, opt_states, step=it)
-                    logger.warning(f'Model saved at {os.path.join(ckpt_mgr.save_dir, ckpt_mgr.ckpts[-1])}')
-                # ckpt_mgr.save(model, args, 0, opt_states, step=it)
+                    logger.warning(f"Model saved at {os.path.join(ckpt_mgr.save_dir, ckpt_mgr.ckpts[-1]['file'])}")
+                dist.barrier()
 
     except KeyboardInterrupt:
         if rank==0:
@@ -262,7 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_grad_norm', type=float, default=2.0)
     ## Training
     parser.add_argument('--seed', type=int, default=2020)
-    parser.add_argument('--clearml', type=eval, default=True, choices=[True, False])
+    parser.add_argument('--clearml', type=eval, default=False, choices=[True, False])
     parser.add_argument('--log_root', type=str, default='./logs')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--max_iters', type=int, default=1*MILLION)
