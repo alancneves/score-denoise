@@ -182,8 +182,6 @@ def main(rank: int, world_size: int, args):
                 pcl_denoised = patch_based_denoise(model, pcl_noisy, ld_step_size=args.ld_step_size)
                 all_clean.append(pcl_clean.unsqueeze(0))
                 all_denoised.append(pcl_denoised.unsqueeze(0))
-                break
-            break
         all_clean = torch.cat(all_clean, dim=0)
         all_denoised = torch.cat(all_denoised, dim=0)
         dist.barrier()
