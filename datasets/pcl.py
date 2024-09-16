@@ -17,7 +17,7 @@ class PointCloudDataset(Dataset):
         self.pointcloud_names = []
         for fn in tqdm(glob(f"{self.pcl_dir}/**/*", recursive=True)):
             pcl_path = os.path.join(self.pcl_dir, fn)
-            pcl = torch.FloatTensor(load_pcd(pcl_path))
+            pcl = torch.FloatTensor(load_pcd(pcl_path), device='cpu')
             self.pointclouds.append(pcl)
             self.pointcloud_names.append(fn[:-4])
 

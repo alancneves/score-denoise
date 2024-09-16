@@ -20,6 +20,7 @@ from utils.denoise import *
 from models.denoise import *
 from models.utils import chamfer_distance_unit_sphere
 from utils.logger import Logger
+from models.utils import farthest_point_sampling_simple
 
 #DDP
 import torch.multiprocessing as mp
@@ -84,19 +85,19 @@ def main(rank: int, world_size: int, args):
         DataLoader(
             train_dset,
             batch_size=args.train_batch_size,
-            num_workers=args.num_workers,
+            num_workers=1,
             shuffle=False,
             pin_memory=True,
-            sampler=DistributedSampler(train_dset)
+            sampler=DistributedSampler(train_dset, shuffle=False)
         )
     )
     val_loader = DataLoader(
         val_dset,
-        batch_size=args.val_batch_size,
+        batch_size=1,
         num_workers=args.num_workers,
         shuffle=False,
         pin_memory=True,
-        sampler=DistributedSampler(val_dset)
+        sampler=DistributedSampler(val_dset, shuffle=False)
     )
 
     # Model
@@ -160,34 +161,41 @@ def main(rank: int, world_size: int, args):
         all_clean = []
         all_denoised = []
 
-        for batch in tqdm(val_loader, desc="Validating..."):
-            pcl_noisy_b = batch['pcl_noisy'].to(rank)
-            pcl_clean_b = batch['pcl_clean'].to(rank)
-            val_losses = []
-            if args.supervised:
-                val_loss = ddp_model.module.get_supervised_loss(pcl_noisy=pcl_noisy_b, pcl_clean=pcl_clean_b)
-            else:
-                val_loss = ddp_model.module.get_selfsupervised_loss(pcl_noisy=pcl_noisy_b)
-            val_losses.append(val_loss)
+        with torch.no_grad():
+            for batch in tqdm(val_loader, desc="Validating..."):
+                pcl_noisy_b = batch['pcl_noisy'].to(rank)
+                pcl_clean_b = batch['pcl_clean'].to(rank)
+                val_losses = []
+                if args.supervised:
+                    val_loss = ddp_model.module.get_supervised_loss(pcl_noisy=pcl_noisy_b, pcl_clean=pcl_clean_b)
+                else:
+                    val_loss = ddp_model.module.get_selfsupervised_loss(pcl_noisy=pcl_noisy_b)
+                val_losses.append(val_loss)
 
-            for i in range(len(pcl_noisy_b)):
-                pcl_noisy = pcl_noisy_b[i]
-                pcl_clean = pcl_clean_b[i]
-                pcl_denoised = patch_based_denoise(model, pcl_noisy, ld_step_size=args.ld_step_size)
-                all_clean.append(pcl_clean.unsqueeze(0))
-                all_denoised.append(pcl_denoised.unsqueeze(0))
-        all_clean = torch.cat(all_clean, dim=0)
-        all_denoised = torch.cat(all_denoised, dim=0)
-        dist.barrier()
+                for i in range(len(pcl_noisy_b)):
+                    pcl_noisy = pcl_noisy_b[i]
+                    pcl_clean = pcl_clean_b[i]
+                    pcl_denoised = patch_based_denoise(model, pcl_noisy, ld_step_size=args.ld_step_size)
+                    all_clean.append(pcl_clean.cpu())
+                    all_denoised.append(pcl_denoised.cpu())
 
-        # Validation loss
-        val_losses = torch.Tensor(val_losses).cuda()
-        dist.all_reduce(val_losses, op=dist.ReduceOp.SUM)
+            # Uniformly sample points on same batch
+            min_sz = min([len(x) for x in all_clean])
+            all_clean = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_clean]
+            min_sz = min([len(x) for x in all_denoised])
+            all_denoised = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_denoised]
+            all_clean = torch.cat(all_clean, dim=0)
+            all_denoised = torch.cat(all_denoised, dim=0)
+            dist.barrier()
 
-        # Metric
-        avg_chamfer = chamfer_distance_unit_sphere(all_denoised, all_clean, batch_reduction='mean')[0].item()
-        avg_chamfer = torch.Tensor([ avg_chamfer ]).cuda()
-        dist.all_reduce(avg_chamfer, op=dist.ReduceOp.SUM)
+            # Validation loss
+            val_losses = torch.Tensor(val_losses).cuda()
+            dist.all_reduce(val_losses, op=dist.ReduceOp.SUM)
+
+            # Metric
+            avg_chamfer = chamfer_distance_unit_sphere(all_denoised, all_clean, batch_reduction='mean')[0].item()
+            avg_chamfer = torch.Tensor([ avg_chamfer ]).cuda()
+            dist.all_reduce(avg_chamfer, op=dist.ReduceOp.SUM)
 
         if rank==0:
             avg_chamfer = avg_chamfer / world_size
@@ -236,8 +244,8 @@ if __name__ == '__main__':
     parser.add_argument('--resolutions', type=str_list, default=['10000_poisson', '30000_poisson', '50000_poisson'])
     parser.add_argument('--noise_min', type=float, default=0.005)
     parser.add_argument('--noise_max', type=float, default=0.020)
-    parser.add_argument('--train_batch_size', type=int, default=32)
-    parser.add_argument('--val_batch_size', type=int, default=8)
+    parser.add_argument('--train_batch_size', type=int, default=16)
+    # parser.add_argument('--val_batch_size', type=int, default=16)
     parser.add_argument('--num_devices', type=int, default=-1)
     parser.add_argument('--num_workers', type=int, default=-1)
     parser.add_argument('--aug_rotate', type=eval, default=True, choices=[True, False])

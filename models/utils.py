@@ -105,6 +105,18 @@ def farthest_point_sampling(pcls, num_pnts):
     return sampled, indices
 
 
+def farthest_point_sampling_simple(pcl, num_pnts):
+    """
+    Args:
+        pcls:  A point cloud, (N, 3).
+        num_pnts:  Target number of points.
+    """
+    ratio = 0.01 + num_pnts / pcl.size(0)
+    idx = fps(pcl, ratio=ratio, random_start=False)[:num_pnts]
+    sampled = pcl[idx, :]
+    return sampled, idx
+
+
 def point_mesh_bidir_distance_single_unit_sphere(pcl, verts, faces):
     """
     Args:
