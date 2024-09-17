@@ -85,7 +85,7 @@ def main(rank: int, world_size: int, args):
         DataLoader(
             train_dset,
             batch_size=args.train_batch_size,
-            num_workers=1,
+            num_workers=args.num_workers,
             shuffle=False,
             pin_memory=True,
             sampler=DistributedSampler(train_dset, shuffle=False)
@@ -96,8 +96,7 @@ def main(rank: int, world_size: int, args):
         batch_size=1,
         num_workers=args.num_workers,
         shuffle=False,
-        pin_memory=True,
-        sampler=DistributedSampler(val_dset, shuffle=False)
+        pin_memory=True
     )
 
     # Model
@@ -138,9 +137,9 @@ def main(rank: int, world_size: int, args):
         loss.backward()
         orig_grad_norm = clip_grad_norm_(ddp_model.parameters(), max_norm=args.max_grad_norm)
         optimizer.step()
-        dist.barrier()
         loss = torch.Tensor([ loss ]).cuda()
-        dist.all_reduce(loss, op=dist.ReduceOp.SUM)
+        dist.barrier()
+        dist.reduce(loss, 0, op=dist.ReduceOp.SUM)
 
         # Logging
         if rank==0:
@@ -176,36 +175,33 @@ def main(rank: int, world_size: int, args):
                     pcl_noisy = pcl_noisy_b[i]
                     pcl_clean = pcl_clean_b[i]
                     pcl_denoised = patch_based_denoise(model, pcl_noisy, ld_step_size=args.ld_step_size)
-                    all_clean.append(pcl_clean.cpu())
-                    all_denoised.append(pcl_denoised.cpu())
+                    all_clean.append(pcl_clean)
+                    all_denoised.append(pcl_denoised)
 
             # Uniformly sample points on same batch
-            min_sz = min([len(x) for x in all_clean])
-            all_clean = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_clean]
-            min_sz = min([len(x) for x in all_denoised])
-            all_denoised = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_denoised]
-            all_clean = torch.cat(all_clean, dim=0)
-            all_denoised = torch.cat(all_denoised, dim=0)
-            dist.barrier()
+            if len(all_clean) > 1:
+                min_sz = min([len(x) for x in all_clean])
+                all_clean = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_clean]
+                min_sz = min([len(x) for x in all_denoised])
+                all_denoised = [farthest_point_sampling_simple(x, min_sz)[0].unsqueeze(0) for x in all_denoised]
+                all_clean = torch.cat(all_clean, dim=0)
+                all_denoised = torch.cat(all_denoised, dim=0)
+            else:
+                all_clean = all_clean[0].unsqueeze(0)
+                all_denoised = all_denoised[0].unsqueeze(0)
 
             # Validation loss
-            val_losses = torch.Tensor(val_losses).cuda()
-            dist.all_reduce(val_losses, op=dist.ReduceOp.SUM)
+            avg_val_loss = torch.Tensor(val_losses).cuda()
 
             # Metric
             avg_chamfer = chamfer_distance_unit_sphere(all_denoised, all_clean, batch_reduction='mean')[0].item()
             avg_chamfer = torch.Tensor([ avg_chamfer ]).cuda()
-            dist.all_reduce(avg_chamfer, op=dist.ReduceOp.SUM)
 
-        if rank==0:
-            avg_chamfer = avg_chamfer / world_size
-            avg_val_loss = val_losses / world_size
-            logger.warning('[Val] Iter %04d | CD %.6f | Val loss %.6f ' % (it, avg_chamfer, avg_val_loss))
-            writer.add_scalar('val/loss', avg_val_loss, it)
-            writer.add_scalar('val/chamfer', avg_chamfer, it)
-            writer.add_mesh('val/pcl', all_denoised[:args.val_num_visualize], global_step=it)
-            writer.flush()
-        dist.barrier()
+        logger.warning('[Val] Iter %04d | CD %.6f | Val loss %.6f ' % (it, avg_chamfer, avg_val_loss))
+        writer.add_scalar('val/loss', avg_val_loss, it)
+        writer.add_scalar('val/chamfer', avg_chamfer, it)
+        writer.add_mesh('val/pcl', all_denoised[:args.val_num_visualize], global_step=it)
+        writer.flush()
 
         # scheduler.step(avg_chamfer)
         return avg_chamfer
@@ -217,12 +213,12 @@ def main(rank: int, world_size: int, args):
         for it in range(1, args.max_iters+1):
             train(it)
             if it % args.val_freq == 0 or it == args.max_iters:
-                cd_loss = validate(it)
-                opt_states = {
-                    'optimizer': optimizer.state_dict(),
-                    # 'scheduler': scheduler.state_dict(),
-                }
                 if rank==0:
+                    cd_loss = validate(it)
+                    opt_states = {
+                        'optimizer': optimizer.state_dict(),
+                        # 'scheduler': scheduler.state_dict(),
+                    }
                     ckpt_mgr.save(model, args, cd_loss, opt_states, step=it)
                     logger.warning(f"Model saved at {os.path.join(ckpt_mgr.save_dir, ckpt_mgr.ckpts[-1]['file'])}")
                 dist.barrier()
@@ -245,7 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--noise_min', type=float, default=0.005)
     parser.add_argument('--noise_max', type=float, default=0.020)
     parser.add_argument('--train_batch_size', type=int, default=16)
-    # parser.add_argument('--val_batch_size', type=int, default=16)
+    parser.add_argument('--val_batch_size', type=int, default=8)
     parser.add_argument('--num_devices', type=int, default=-1)
     parser.add_argument('--num_workers', type=int, default=-1)
     parser.add_argument('--aug_rotate', type=eval, default=True, choices=[True, False])
