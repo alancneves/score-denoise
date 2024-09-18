@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from pathlib import Path
-from plyfile import PlyData
+from plyfile import PlyData, PlyElement
 from glob import glob
 
 class PointCloudDataset(Dataset):
@@ -51,3 +51,24 @@ def load_pcd(filepath: str) -> np.array:
         raise NotImplementedError(f"Files with ext {ext} are not allowed!")
 
     return data
+
+
+def save_pcd(filepath: str, pcl: np.array):
+    # Create subjacent folders
+    Path(filepath).parent.mkdir(exist_ok=True, parents=True)
+    # Create filetype as choosed by user
+    ext = Path(filepath).suffix
+    if ext == '.txt' or ext == '.xyz':
+        np.savetxt(filepath, pcl, fmt='%.8f')
+    elif ext == '.npy' or ext == '.npz':
+        np.save(filepath, pcl)
+    elif ext == '.ply':
+        vertex = np.zeros(len(pcl), dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
+        vertex['x'] = pcl[:,0]
+        vertex['y'] = pcl[:,1]
+        vertex['z'] = pcl[:,2]
+        el = PlyElement.describe(vertex, 'vertex')
+        PlyData([el]).write(filepath)
+    else:
+        raise NotImplementedError(f"Files with ext {ext} are not allowed to be created!")
+    
