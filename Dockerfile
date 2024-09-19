@@ -4,10 +4,7 @@
 # https://github.com/luost26/score-denoise
 #
 
-ARG UBUNTU_VERSION=22.04
-ARG NVIDIA_CUDA_VERSION=11.8.0
-
-FROM nvidia/cuda:${NVIDIA_CUDA_VERSION}-cudnn8-devel-ubuntu${UBUNTU_VERSION}
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND noninteractive
 WORKDIR /app/

@@ -44,11 +44,57 @@ conda install -c pytorch3d pytorch3d==0.5.0
 conda install -c pyg pytorch-cluster==1.5.9
 ```
 
+### Docker
+
+After following the [docker installing instructions](https://docs.docker.com/engine/install/), just do:
+
+```
+docker build --compress --rm  -t score_denoise .
+```
+
+and a docker image will be built and ready for use. To use it:
+
+```
+docker run -it --rm --ipc=host --gpus=all -v $HOME:$HOME score_denoise bash
+```
+
 ## Datasets
+
+### Paper Datasets
 
 Download link: https://drive.google.com/drive/folders/1--MvLnP7dsBgBZiu46H0S32Y1eBa_j6P?usp=sharing
 
 Please extract `data.zip` to `data` folder.
+
+### Custom dataset
+
+1. Collect models (GT) from desired structure (bridge, tower, bicicle, car) from a place such as thingverse, sketchfab, etc
+2. Convert the model to a pointcloud format (XYZ, PLY) using a software such as blender or CloudCompare.
+3. Downsample the pointclouds. We have a script for that: `subsample_pcd.ply`
+4. Put the images on folders with the following structure:
+```
+custom_dataset/
+└── pointclouds
+    ├── test
+    │   ├── 10000_poisson
+    │   ├── 30000_poisson
+    │   └── 50000_poisson
+    └── train
+        ├── 10000_poisson
+        │   ├── a.xyz
+        │   ├── ...
+        │   └── z.ply
+        ├── 30000_poisson
+        │   ├── a.xyz
+        │   ├── ...
+        │   └── z.ply
+        └── 50000_poisson
+            ├── a.xyz
+            ├── ...
+            └── z.ply    
+```
+
+where the _x_poisson_ folders contains the pointclouds with that x number of points.
 
 ## Denoise
 
@@ -92,6 +138,16 @@ python train.py
 ```
 
 Please find tunable parameters in the script.
+
+### Train on custom dataset
+
+Example of cmd to train on custom dataset:
+
+```
+python train.py --ckpt ./pretrained/ckpt.pt --lr 1e-5 --dataset_root '/data' --dataset 'mixed' --val_freq 30000 --max_iters 120000
+```
+
+if the dataset root is on folder `/data/mixed`. It will look for folders `pointcloud/train` and `pointcloud/test`.
 
 ## Citation
 
