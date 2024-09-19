@@ -94,8 +94,8 @@ def farthest_point_sampling(pcls, num_pnts):
         pcls:  A batch of point clouds, (B, N, 3).
         num_pnts:  Target number of points.
     """
-    if not isinstance(pcl, torch.Tensor):
-        pcl = torch.from_numpy(pcl)
+    if not isinstance(pcls, torch.Tensor):
+        pcls = torch.from_numpy(pcls)
     ratio = 0.01 + num_pnts / pcls.size(1)
     sampled = []
     indices = []
