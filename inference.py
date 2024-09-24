@@ -10,18 +10,6 @@ from datasets.pcl import load_pcd
 from utils.logger import Logger
 
 
-def input_iter(path):
-    fn = Path(path).name
-    pcl_noisy = torch.FloatTensor(load_pcd(path))
-    pcl_noisy, center, scale = NormalizeUnitSphere.normalize(pcl_noisy)
-    return {
-        'pcl_noisy': pcl_noisy,
-        'name': fn[:-4],
-        'center': center,
-        'scale': scale
-    }
-
-
 if __name__ == '__main__':
 
     # Arguments
@@ -53,25 +41,23 @@ if __name__ == '__main__':
 
     # Denoise
     logger.info(f'Performing denoising on {args.input_file}...')
-    data = input_iter(args.input_file)
-    pcl_noisy = data['pcl_noisy'].to(args.device)
-    pcl_is_large = False
-    if len(pcl_noisy)>50000:
+    noisy_pcl = torch.FloatTensor(load_pcd(args.input_file)).to(args.device)
+    pcl_is_large = len(noisy_pcl)>50000
+    if pcl_is_large:
         logger.info(f'PCD is considered large (>50k points)!')
-        pcl_is_large = True
     try:
         with torch.no_grad():
             if pcl_is_large:
                 pcl_denoised = denoise_large_pointcloud(
                     model=model,
-                    pcl=pcl_noisy,
+                    pcl=noisy_pcl,
                     cluster_size=args.cluster_size,
                     seed=args.seed
                 )
                 pcl_denoised = pcl_denoised.cpu().numpy()
             else:
-                scale, center = data['scale'], data['center']
-                pcl_denoised = patch_based_denoise(model, pcl_noisy).cpu()
+                noisy_pcl, center, scale = NormalizeUnitSphere.normalize(noisy_pcl)
+                pcl_denoised = patch_based_denoise(model, noisy_pcl).cpu()
                 pcl_denoised = pcl_denoised * scale + center
 
         # Save result
