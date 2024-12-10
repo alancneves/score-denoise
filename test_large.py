@@ -3,7 +3,7 @@ import time
 import argparse
 import torch
 from tqdm.auto import tqdm
-
+from datasets.pcl import load_pcd
 from utils.misc import *
 from utils.denoise import *
 from models.denoise import *
@@ -26,7 +26,7 @@ model = DenoiseNet(ckpt['args']).to(args.device)
 model.load_state_dict(ckpt['state_dict'])
 
 # Point cloud
-pcl = np.loadtxt(args.input_xyz)
+pcl = load_pcd(args.input_xyz)
 pcl = torch.FloatTensor(pcl).to(args.device)
 
 pcl_denoised = denoise_large_pointcloud(
